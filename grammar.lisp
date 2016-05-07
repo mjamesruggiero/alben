@@ -7,6 +7,21 @@
     (Verb -> hit took saw liked))
   "A grammar for a trivial subset of English")
 
+(defparameter *bigger-grammar*
+  '((sentence -> (noun-phrase verb-phrase))
+    (noun-phrase -> (Article Adj* Noun PP*) (Name) (Pronoun))
+    (verb-phrase -> (Verb noun-phrase PP*))
+    (PP* -> () (PP PP*))
+    (Adj* -> () (Adj Adj*))
+    (PP -> (Prep noun-phrase))
+    (Prep -> to in by with on)
+    (Adj -> big little blue green adiabatic)
+    (Article -> the a)
+    (Name -> Pat Kim Lee Terry Robin)
+    (Noun -> man ball woman table)
+    (Verb -> hit took saw liked)
+    (Pronoun -> he she it these those that)))
+
 (defvar *grammar* *simple-grammar*
   "The grammar used by generate. Initially, 
   it is *simple-grammar* but we can switch 
@@ -43,3 +58,36 @@
         ((rewrites phrase)
          (generate (random-elt (rewrites phrase))))
         (t (list phrase))))
+
+(defun generate-tree (phrase)
+  "Generate random sentence or phrase,
+  with a complete parse tree"
+  (cond ((listp phrase)
+         (mapcar #'generate-tree phrase))
+        ((rewrites phrase)
+         (cons phrase
+               (generate-tree (random-elt (rewrites phrase)))))
+        (t (list phrase))))
+
+(defun cross-product (fn xlist ylist)
+  "Return a list of all (fn x y) values"
+  (mappend #'(lambda (y)
+               (mapcar #'(lambda (x) (funcall fn x y))
+                       xlist))
+           ylist))
+
+(defun combine-all (xlist ylist)
+  "Return a list of lists, formed by appending a y to an x
+  for instance (combine-all '((a) (b))) '((1) (2))
+  -> ((A 1) (B 1) (A 2) (B 2))"
+  (cross-product #'append xlist ylist))
+
+(defun generate-all (phrase)
+  "Generate a list of all possible expansions of this phrase"
+  (cond ((null phrase) (list nil))
+        ((listp phrase)
+         (combine-all (generate-all (first phrase))
+                      (generate-all (rest phrase))))
+        ((rewrites phrase)
+         (mappend #'generate-all (rewrites phrase)))
+        (t (list (list phrase)))))
