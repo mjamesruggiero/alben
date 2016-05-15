@@ -1,3 +1,27 @@
+(defvar *dbg-ids* nil "Identifiers used by dbg")
+
+(defun dbg (id format-string &rest args)
+  "Print debugging info if (DEBUG ID) has been identified"
+  (when (member id *dbg-ids*)
+    (fresh-line *debug-io*)
+    (apply #'format *debug-io* format-string args)))
+
+(defun debug (&rest ids)
+  "Start dbg output on the given ids"
+  (setf *dbg-ids* (union ids *dbg-ids*)))
+
+(defun undebug (&rest ids)
+  "Stop dbg on the ids"
+  (setf *dbg-ids* (if (null ids) nil
+             (set-difference *dbg-ids* ids))))
+
+(defun dbg-indent (id indent format-string &rest args)
+  "Print indented debugging info if (DEBUG ID) has been specified"
+  (when (member id *dbg-ids*)
+    (fresh-line *dbg-io*)
+    (dotimes (i indent) (princ " " *debug-io*))
+    (apply #'format *debug-io* format-string args)))
+
 (defun starts-with (list x)
   "Is x a list whose first element is x?"
   (and (listp list) (eql (first list) x)))
@@ -49,4 +73,3 @@ or if there is an appropriate op fo it that is applicable"
 (defun GPS (state goals &optional (*ops* *ops*))
   "General problem solver: from state, achieve gols using ops"
   (remove-if #'atom (achieve-all (cons '(start) state) goals nil)))
-
