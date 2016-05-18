@@ -26,6 +26,18 @@
   "Is x a list whose first element is x?"
   (and (consp list) (eql (first list) x)))
 
+(defun find-all (item sequence &rest keyword-args
+                 &key (test #'eql) test-not &allow-other-keys)
+  "Find all those elements of sequence that match item,
+  according to the keywords"
+  (if test-not
+      (apply #'remove item sequence
+             :test-not (complement test-not) keyword-args)
+      (apply #'remove item sequence
+             :test (complement test) keyword-args)))
+
+(setf (symbol-function 'find-all-if) #'remove-if-not)
+
 (defun executing-p (x)
   "Is this list in the form of (executing ...)"
   (starts-with x 'executing))
@@ -58,7 +70,7 @@
                              (cons goal goal-stack))))
     (unless (null state2)
       ;;return an updated state
-      (dbg-indent :gps (length goal-stack) "Action: ~a" (ops-action op))
+      (dbg-indent :gps (length goal-stack) "Action: ~a" (op-action op))
       (append (remove-if #'(lambda (x)
                              (member-equal x (op-del-list op)))
                          state2)
@@ -78,14 +90,14 @@
 ;; the earlier #achieve and #achieve-all methods Norvig defines
 ;; -------------------------------------------------------------
 
-(defun achieve (state goal goal-stack)
-  "A goal is achieved if it already holds,
-or if there is an appropriate op fo it that is applicable"
-  (dbg-indent :gps (length goal-stack) "Goal ~a" goal)
-  (cond ((member-equal goal-state) state)
-        ((member-equal goal goal-stack) nil)
-        (t (some #'(lambda (op) (apply-op state goal op goal-stack))
-                 (find-all goal *ops* :test #'appropriate-p)))))
+;; (defun achieve (state goal goal-stack)
+;;   "A goal is achieved if it already holds,
+;; or if there is an appropriate op fo it that is applicable"
+;;   (dbg-indent :gps (length goal-stack) "Goal ~a" goal)
+;;   (cond ((member-equal goal-state) state)
+;;         ((member-equal goal goal-stack) nil)
+;;         (t (some #'(lambda (op) (apply-op state goal op goal-stack))
+;;                  (find-all goal *ops* :test #'appropriate-p)))))
 
 (defun achieve-all (state goals goal-stack)
   "Achieve each goal and make sure they still hold at the end"
@@ -136,7 +148,7 @@ or if there is an appropriate opp for it that can be applied"
        :add-list '(empty-handed not-hungry)
        :del-list '(has-bananas hungry))))
 
-(defun make-maze-op (pair)
+(defun make-maze-op (here there)
   "Make an operator to move between two places"
   (op `(move from ,here to ,there)
       :preconds `((at ,here))
@@ -148,6 +160,11 @@ or if there is an appropriate opp for it that can be applied"
   (list (make-maze-op (first pair) (second pair))
         (make-maze-op (second pair) (first pair))))
 
+(defun mappend (fn list)
+  "Append the results of calling fn on each element of list.
+  Like mapcon but uses append instead of nconc"
+  (apply #'append (mapcar fn list)))
+
 (defparameter *maze-ops*
   (mappend #'make-maze-ops
            '((1 2) (2 3) (3 4) (4 9) (9 14) (9 8) (8 7) (7 12) (12 13)
@@ -156,7 +173,7 @@ or if there is an appropriate opp for it that can be applied"
 
 (defun action-p (x)
   "Is x something that is (start) or (executing)?"
-  (or (equal x '(start) (executing-p x))))
+  (or (equal x '(start)) (executing-p x)))
 
 ;; -------------------------------------------------------------
 ;; the newer GPS
@@ -166,10 +183,14 @@ or if there is an appropriate opp for it that can be applied"
   (find-all-if #'action-p
                (achieve-all (cons '(start) state) goals nil)))
 
+(defun destination (action)
+  "Find the Y in (executing (move from X to Y))"
+  (fifth (second action)))
+
 (defun find-path (start end)
   "Search a maze for a path from start to end"
   (let ((results (GPS `((at ,start)) `((at ,end)))))
     (unless (null results)
       (cons start (mapcar #'destination
                           (remove '(start) results
-                                  :test #'equals))))))
+                                  :test #'equal))))))
