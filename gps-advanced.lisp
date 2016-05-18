@@ -6,7 +6,7 @@
     (fresh-line *debug-io*)
     (apply #'format *debug-io* format-string args)))
 
-(defun debug (&rest ids)
+(defun setdebug (&rest ids)
   "Start dbg output on the given ids"
   (setf *dbg-ids* (union ids *dbg-ids*)))
 
@@ -97,6 +97,18 @@ or if there is an appropriate op fo it that is applicable"
              (subsetp goals current-state :test #'equal))
         current-state)))
 
+;; -------------------------------------------------------------
+;; the later #achieve and #achieve-all methods Norvig defines
+;; -------------------------------------------------------------
+(defun achieve (state goal goal-stack)
+  "A goal is achieved if it already holds,
+or if there is an appropriate opp for it that can be applied"
+  (dbg-indent :gps (length goal-stack) "Goal: ~a" goal)
+  (cond ((member-equal goal state) state)
+        ((member-equal goal goal-stack) nil)
+        (t (some #'(lambda (op) (apply-op state goal op goal-stack))
+                 (find-all goal *ops* :test #'appropriate-p)))))
+
 (defparameter *banana-ops*
   (list
    (op 'climb-on-chair
@@ -124,6 +136,40 @@ or if there is an appropriate op fo it that is applicable"
        :add-list '(empty-handed not-hungry)
        :del-list '(has-bananas hungry))))
 
+(defun make-maze-op (pair)
+  "Make an operator to move between two places"
+  (op `(move from ,here to ,there)
+      :preconds `((at ,here))
+      :add-list `((at ,there))
+      :del-list `((at ,here))))
+
+(defun make-maze-ops (pair)
+  "Make maze ops in both directions"
+  (list (make-maze-op (first pair) (second pair))
+        (make-maze-op (second pair) (first pair))))
+
+(defparameter *maze-ops*
+  (mappend #'make-maze-ops
+           '((1 2) (2 3) (3 4) (4 9) (9 14) (9 8) (8 7) (7 12) (12 13)
+              (12 11) (11 6) (11 16) (16 17) (17 22) (21 22) (22 23)
+              (23 18) (23 24) (24 19) (19 20) (20 15) (15 10) (10 5) (20 25))))
+
+(defun action-p (x)
+  "Is x something that is (start) or (executing)?"
+  (or (equal x '(start) (executing-p x))))
+
+;; -------------------------------------------------------------
+;; the newer GPS
+;; -------------------------------------------------------------
 (defun GPS (state goals &optional (*ops* *ops*))
   "General problem solver: from state, achieve gols using ops"
-  (remove-if #'atom (achieve-all (cons '(start) state) goals nil)))
+  (find-all-if #'action-p
+               (achieve-all (cons '(start) state) goals nil)))
+
+(defun find-path (start end)
+  "Search a maze for a path from start to end"
+  (let ((results (GPS `((at ,start)) `((at ,end)))))
+    (unless (null results)
+      (cons start (mapcar #'destination
+                          (remove '(start) results
+                                  :test #'equals))))))
