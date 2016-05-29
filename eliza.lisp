@@ -13,17 +13,6 @@
       x
       (list x)))
 
-(defun variable-p (x)
-  "Is x a variable (a symbol beginning with `?`)"
-  (and (symbolp x) (equal (elt (symbol-name x) 0) #\?)))
-
-(defun match-variable (var input bindings)
-  "Does VAR match input? Uses (or updates) and returns bindings"
-  (let ((binding (get-binding var bindings)))
-    (cond ((not binding) (extend-bindings var input bindings))
-          ((equal input (binding-val binding)) bindings)
-          (t fail))))
-
 (defun flatten (the-list)
   "Append together elements (or lists) in the list"
   (mappend #'mklist the-list))
@@ -72,11 +61,18 @@
                          bindings)))
         (t fail)))
 
+(defun match-variable (var input bindings)
+  "Does var match input? Uses (or updates) bindings and returns them"
+  (let ((binding (get-binding var bindings)))
+    (cond ((not binding) (extend-bindings var input bindings))
+          ((equal input (binding-val binding)) bindings)
+          (t fail))))
+
 (defun make-binding (var val)
   (cons var val))
 
 (defun binding-var (binding)
-  "Get the varuable part of a single binding"
+  "Get the variable part of a single binding"
   (car binding))
 
 (defun binding-val (binding)
@@ -92,11 +88,96 @@
   (binding-val (get-binding var bindings)))
 
 (defun extend-bindings (var val bindings)
-  "Add a (var . val) pair to a binding list"
+  "Ad a (var . value) pair to a binding list"
   (cons (cons var val)
-        ;; Once we add a real binding
-        ;; we can get rid of no-bindings
         (if (eq bindings no-bindings)
             nil
             bindings)))
 
+(defun variable-p (x)
+  "Is x a variable (a symbol beginning with `?')"
+  (and (symbolp x) (equal (elt (symbol-name x) 0) #\?)))
+
+(defun read-line-no-punct ()
+  "Read an input line, ignoring punctuation"
+  (read-from-string
+   (concatenate 'string "(" (substitute-if #\space #'punctuation-p
+                                           (read-line))
+                ")")))
+
+(defun punctuation-p (char)
+  (find char ",,;:`!?#-()\\\""))
+
+(defun eliza ()
+  "Respond to user input using pattern matching rules"
+  (loop
+    (print 'eliza>)
+    (let* ((input (read-line-no-punct))
+           (response (flatten (use-eliza-rules input))))
+      (print-with-spaces response)
+      (if (equal response )))))
+
+(defparameter *eliza-rules*
+  '((((?* ?x) hello (?* ?y))
+     (How do you do. Please state your problem.))
+    (((?* ?x) computer (?* ?y))
+     (Do computers worry about you?)
+     (What do you think about computers?)
+     (What do you think machines have to do with your problem?))
+    (((?* ?x) name (?* ?y))
+     (I am not interested in names))
+    (((?* ?x) sorry (?* ?y))
+     (Please don't apologize.)
+     (Apologies are not necessary.)
+     (What feelings do you have when you apologize?))
+    (((?* ?x) I remember (?* ?y))
+     (Do you often think of ?y)
+     (Does thinking of ?y bring anything else to mind?)
+     (What else do you remember?)
+     (Why do you recall ?y right now?)
+     (What in the present situation reminds you of ?y ?)
+     (What is the connection between me and ?y ?))
+    (((?* ?x) do you remember (?* ?y))
+     (Did you think I would forget ?y ?)
+     (Why do you think I should recall ?y now?)
+     (What about ?y)
+     (You mentioned ?y .))
+    (((?* ?x) if (?* ?y))
+     (Do you really think it is likely that ?y ?)
+     (Do you wish that ?y ?)
+     (What do you think about ?y ?)
+     (Really -- if ?y ?))
+    (((?*  ?x) if (?* ?y))
+     (Do you really think it's likely that ?y)
+     (Do you wish that ?y)
+     (What do you think about ?y)
+     (Really -- if ?y))
+    (((?* ?x) I dreamt (?* ?y))
+     (Really -- ?y)
+     (Have you ever fantasized ?y while you were awake?)
+     (Have you dreamt about ?y before?))
+    (((?* ?x) dream about (?* ?y))
+     (How do you feel about ?y in reality?))
+    (((?* ?x) dream (?* ?y))
+     (What does this dream suggest to you?)
+     (Do you dream often?)
+     (What persons appear in your dreams?)
+     (Don't you believe that dream has something to do with your problem?))
+    (((?* ?x) my mother (?* ?y))
+     (Who else in your family ?y ?)
+     (Tell me more about your family.))
+    (((?* ?x) my father (?* ?y))
+     (Your father.)
+     (Does he influence you strongly?)
+     (What else comes to mind when you think about your father?))
+    (((?* ?y) I want (?* ?y))
+     (What would it mean if you got ?y ?)
+     (Why do you want ?y ?)
+     (Suppose you got y? soon?))
+    (((?* ?y) I am glad (?* ?y)
+      (How have I helped you to be ?y)
+      (What makes you happy just now?)
+      (Can you explain why you are suddenly ?y ?)))
+    (((?* ?x) I am sad (?* ?y))
+     (I'm sorry to hear you are depressed.)
+     (I'm sure it's not pleasant to be sad.))))
