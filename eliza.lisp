@@ -1,6 +1,36 @@
-(defconstant fail nil)
+(defparameter fail nil)
 
-(defconstant no-bindings '((t . t)))
+(defparameter no-bindings '((t . t)))
+
+(defun make-binding (var val)
+  (cons var val))
+
+(defun binding-var (binding)
+  "Get the variable part of a single binding"
+  (car binding))
+
+(defun binding-val (binding)
+  "Get the value part of a single binding"
+  (cdr binding))
+
+(defun get-binding (var bindings)
+  "Find a (variable . val) pair in a binding list"
+  (assoc var bindings))
+
+(defun lookup (var bindings)
+  "Get the value part (for var) from a binding list"
+  (binding-val (get-binding var bindings)))
+
+(defun extend-bindings (var val bindings)
+  "Ad a (var . value) pair to a binding list"
+  (cons (cons var val)
+        (if (eq bindings no-bindings)
+            nil
+            bindings)))
+
+(defun variable-p (x)
+  "Is x a variable (a symbol beginning with `?')"
+  (and (symbolp x) (equal (elt (symbol-name x) 0) #\?)))
 
 (defun mappend (fn list)
   "Append the results of calling fn on each element of list.
@@ -25,6 +55,13 @@
   "Is this a segment matching pattern ((?* var) . pat)"
   (and (consp pattern)
        (starts-with (first pattern) '?*)))
+
+(defun match-variable (var input bindings)
+  "Does var match input? Uses (or updates) bindings and returns them"
+  (let ((binding (get-binding var bindings)))
+    (cond ((not binding) (extend-bindings var input bindings))
+          ((equal input (binding-val binding)) bindings)
+          (t fail))))
 
 (defun segment-match (pattern input bindings &optional (start 0))
   "Match the segment pattern ((?* var) . pat) against input"
@@ -61,43 +98,6 @@
                          bindings)))
         (t fail)))
 
-(defun match-variable (var input bindings)
-  "Does var match input? Uses (or updates) bindings and returns them"
-  (let ((binding (get-binding var bindings)))
-    (cond ((not binding) (extend-bindings var input bindings))
-          ((equal input (binding-val binding)) bindings)
-          (t fail))))
-
-(defun make-binding (var val)
-  (cons var val))
-
-(defun binding-var (binding)
-  "Get the variable part of a single binding"
-  (car binding))
-
-(defun binding-val (binding)
-  "Get the value part of a single binding"
-  (cdr binding))
-
-(defun get-binding (var bindings)
-  "Find a (variable . val) pair in a binding list"
-  (assoc var bindings))
-
-(defun lookup (var bindings)
-  "Get the value part (for var) from a binding list"
-  (binding-val (get-binding var bindings)))
-
-(defun extend-bindings (var val bindings)
-  "Ad a (var . value) pair to a binding list"
-  (cons (cons var val)
-        (if (eq bindings no-bindings)
-            nil
-            bindings)))
-
-(defun variable-p (x)
-  "Is x a variable (a symbol beginning with `?')"
-  (and (symbolp x) (equal (elt (symbol-name x) 0) #\?)))
-
 (defun read-line-no-punct ()
   "Read an input line, ignoring punctuation"
   (read-from-string
@@ -108,6 +108,10 @@
 (defun punctuation-p (char)
   (find char ",,;:`!?#-()\\\""))
 
+(defun print-with-spaces (list)
+  (mapc #'(lambda (x) (prin1 x) (princ " "))
+        list))
+
 (defun eliza ()
   "Respond to user input using pattern matching rules"
   (loop
@@ -115,7 +119,8 @@
     (let* ((input (read-line-no-punct))
            (response (flatten (use-eliza-rules input))))
       (print-with-spaces response)
-      (if (equal response )))))
+      (if (equal response '(good bye))
+          (RETURN)))))
 
 (defparameter *eliza-rules*
   '((((?* ?x) hello (?* ?y))
@@ -127,7 +132,7 @@
     (((?* ?x) name (?* ?y))
      (I am not interested in names))
     (((?* ?x) sorry (?* ?y))
-     (Please don't apologize.)
+     (Please do not apologize.)
      (Apologies are not necessary.)
      (What feelings do you have when you apologize?))
     (((?* ?x) I remember (?* ?y))
@@ -141,7 +146,7 @@
      (Did you think I would forget ?y ?)
      (Why do you think I should recall ?y now?)
      (What about ?y)
-     (You mentioned ?y .))
+     (You mentioned ?y))
     (((?* ?x) if (?* ?y))
      (Do you really think it is likely that ?y ?)
      (Do you wish that ?y ?)
@@ -180,4 +185,122 @@
       (Can you explain why you are suddenly ?y ?)))
     (((?* ?x) I am sad (?* ?y))
      (I'm sorry to hear you are depressed.)
-     (I'm sure it's not pleasant to be sad.))))
+     (I'm sure it's not pleasant to be sad.))
+    (((?* ?y) are like (?* ?y))
+     (What resemblance do you see between ?x and ?y ?))
+    (((?* ?x) is like (?* ?y))
+     (In what way is it that ?x is like ?y ?)
+     (What resemblance do you see?)
+     (Could there really be some connection?)
+     (How?))
+    (((?* ?x) alike (?* ?y)
+      (In what way?)
+      (What similarities are there?)))
+    (((?* ?x) same (?* y?))
+      (What other connections do you see?))
+    (((?* ?x) I was (*? ?y))
+      (Were you really?)
+      (Perhaps I already knew you were ?y)
+     (Why tell me now that you were ?y ?))
+    (((?* ?x) was I(?* ?y))
+     (What if you were ?y ?)
+     (Do you think you were ?y ?)
+     (What would it mean if you were ?y ?))
+    (((?* ?x) I am (?* ?y))
+     (In what way are you ?y ?)
+     (Do you want to be ?y ?))
+    (((?* ?x) am I (?* ?y))
+     (Do you believe you are ?y ?)
+     (Would you want to be ?y ?)
+     (You wish I would tell you you are ?y ?)
+     (What would it mean if you were ?y ?))
+    (((?* ?x) am (?* ?y))
+     (Why do you say "AM"?)
+     (I don't understand that.))
+    (((?* ?x) are you (?* ?y))
+     (Why are you interested in whether I am ?y or not?)
+     (Would you prefer if I were not ?y ?)
+     (Perhaps I am ?y in your fantasies.))
+    (((?* ?x) you are (?* ?y))
+     (What makes you think I am ?y ?))
+    (((?* ?x) because (?* ?y))
+     (Is that the real reason?)
+     (What other reasons might there be?)
+     (Does that reason seem to explain anything else?))
+    (((?* ?x) were you (?* ?y))
+     (Perhaps I was ?y.)
+     (What do you think?)
+     (What if I had been ?y ?))
+    (((?* ?x) I cannot (?* ?y))
+     (Maybe you could ?y now.)
+     (What if you could ?y ?))
+    (((?* ?x) I feel (?* ?y))
+     (Do you often feel ?y ?))
+    (((?* ?x) I felt (?* ?y))
+     (What other feelings do you have?)
+     (Let's talk more about that feeling.))
+    (((?* ?x) I (?* ?y) you (?* ?z))
+     (Perhaps in your fantasy we ?y each other.)
+     (Do you ?y anyone else?))
+    (((?* ?x) why don't you (?* ?y))
+     (Should you ?y yourself?)
+     (Do you believe I do not ?y)
+     (Perhaps I will ?y in good time.))
+    (((?* ?x) yes (?* ?y))
+     (You seem quite positive.)
+     (You are sure.)
+     (I understand.))
+    (((?* ?x) no (?* ?y))
+     (Why not?)
+     (You are being a bit negative.)
+     (Are you saying "no" just to be negative?))
+    (((?* ?x) someone (?* ?y))
+     (Can you be more specific?))
+    (((?* ?x) everyone (?* ?y))
+     (Surely not everyone.)
+     (Can you think of anyone in particular?)
+     (You are thinking of a specific person.)
+     (Who for example))
+    (((?* ?x) always (?* ?y))
+     (Can you think of a specific example?)
+     (When?)
+     (What incident are you thinking of?)
+     (Really... always?))
+    (((?* ?x) what (?* ?y))
+     (Why do you ask?)
+     (Does that question interest you?)
+     (What is it that you really want to know?)
+     (What do you think?))
+    (((?* ?x) perhaps (?* ?y))
+     (You do not seem quite certain.))
+    (((?* ?x) are (?* ?y))
+     (Did you think they might not be ?y ?)
+     (Possibly they are ?y))
+    (((?* ?y))
+     (What does that suggest to you?)
+     (Please continue.)
+     (Do you feel strongly about discussing such things?)
+     (Go on.)
+     (Very interesting.)
+     (Not sure I understand you fully.))))
+
+(defun rule-pattern (rule) (first rule))
+(defun rule-responses (rule) (rest rule))
+
+(defun use-eliza-rules (input)
+  "Find some rule with which to transform the input"
+  (some #'(lambda (rule)
+            (let ((result (pat-match (rule-pattern rule) input)))
+              (if (not (eq result fail))
+                  (sublis (switch-viewpoint result)
+                          (random-elt (rule-responses rule))))))
+        *eliza-rules*))
+
+(defun switch-viewpoint (words)
+  "Change I to you and vice versa and so on"
+  (sublis '((I . you) (you . I) (me . you) (am . are))
+          words))
+
+(defun random-elt (choices)
+  "Choose an element from a list at random"
+  (elt choices (random (length choices))))
