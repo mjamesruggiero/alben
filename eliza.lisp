@@ -112,18 +112,25 @@
   (mapc #'(lambda (x) (prin1 x) (princ " "))
         list))
 
-(defun eliza ()
-  "Respond to user input using pattern matching rules"
-  (loop
-    (print 'eliza>)
-    (let* ((input (read-line-no-punct))
-           (response (flatten (use-eliza-rules input))))
-      (print-with-spaces response)
-      (if (equal response '(good bye))
-          (RETURN)))))
+(defun rule-pattern (rule)
+  (first rule))
+
+(defun rule-responses (rule)
+  (rest rule))
+
+(defun switch-viewpoint (words)
+  "Change I to you and vice versa and so on"
+  (sublis '((I . you) (you . I) (me . you) (am . are))
+          words))
+
+(defun random-elt (choices)
+  "Choose an element from a list at random"
+  (elt choices (random (length choices))))
 
 (defparameter *eliza-rules*
-  '((((?* ?x) hello (?* ?y))
+  '((((?* ?x) time is up (?* ?y))
+     (good bye))
+    (((?* ?x) hello (?* ?y))
      (How do you do. Please state your problem.))
     (((?* ?x) computer (?* ?y))
      (Do computers worry about you?)
@@ -284,9 +291,6 @@
      (Very interesting.)
      (Not sure I understand you fully.))))
 
-(defun rule-pattern (rule) (first rule))
-(defun rule-responses (rule) (rest rule))
-
 (defun use-eliza-rules (input)
   "Find some rule with which to transform the input"
   (some #'(lambda (rule)
@@ -296,11 +300,13 @@
                           (random-elt (rule-responses rule))))))
         *eliza-rules*))
 
-(defun switch-viewpoint (words)
-  "Change I to you and vice versa and so on"
-  (sublis '((I . you) (you . I) (me . you) (am . are))
-          words))
+(defun eliza ()
+  "Respond to user input using pattern matching rules"
+  (loop
+    (print 'eliza>)
+    (let* ((input (read-line-no-punct))
+           (response (flatten (use-eliza-rules input))))
+      (print-with-spaces response)
+      (if (equal response '(good bye))
+          (RETURN)))))
 
-(defun random-elt (choices)
-  "Choose an element from a list at random"
-  (elt choices (random (length choices))))
