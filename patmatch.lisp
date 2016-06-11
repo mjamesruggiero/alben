@@ -36,6 +36,11 @@
           ((equal input (binding0val binding)) bindings)
           (t fail))))
 
+(defun segment-match-fn (x)
+  "Get the segment-match function for x,
+  if it is a symbol that has one"
+  (when (symbol p) (get x 'segment-match)))
+
 (defun segment-pattern-p (pattern)
   "Is this a segment-matching pattern like ((?* var) . pat)?"
   (and (consp pattern) (consp (first pattern))
