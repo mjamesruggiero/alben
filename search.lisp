@@ -160,4 +160,59 @@ The center is (0 0 0) and the north pole is (0 0 1)"
                 :previous old-path
                 :cost-so-far old-cost
                 :total-cost (+ old-cost (funcall cost-left-fn new-state)))))
-         (funcall successors old-state)))))
+         (funcall successors)))))
+
+(defun print-path (path &optional (stream t) depth)
+  (declare (ignore depth))
+  (format stream "#<Path to ~a cost ~,f>"
+          (path-state path) (path-total-cost path)))
+
+(defun show-city-path (path &optional (stream t))
+  "Show the length of a path and the cities along it"
+  (format stream "#<Path ~,1f km: ~{~:(~a~)~^ - ~}>"
+          (path-total-cost path)
+          (reverse (map-path #'city-name path)))
+  (values))
+
+(defun map-path (fn path)
+  "Call fn on each state in the path, collecting results"
+  (if (null path)
+      nil
+      (cons (funcall fn (path-state path))
+            (map-path fn (path-previous path)))))
+
+(defun iter-wide-search (start goal-p successors cost-fn &key (width 1) (max 100))
+  "Search, increasing beam-width from width to max.
+Return thr first solution found at any width."
+  (dbg :search "; Width: ~d" width)
+  (unless (> width max)
+    (or (beam-search start goal-p successors cost-fn width)
+        (iter-wide-search start goal-p successors cost-fn
+                          :width (+ width 1) :max max))))
+
+(defun graph-search (states goal-p successors combiner
+                     &optional (state= #'eql) :max max)
+  "Find a state that satisfies goal-p. Start with states,
+and search according to successors and combiner.
+Don't try the same state twice."
+  (dbg :search "~&;; Search: ~a " states)
+  (cond ((null states) fail)
+        ((funcall goal-p (first states)) (first states))
+        (t (graph-search
+            (funcall
+             combiner
+             (new-states states successors state= old-states)
+             (rest states))
+            goal-p successors combiner state=
+            (adjoin (first states) old-states
+                    :test state=)))))
+
+(defun new-states (states successors state= old-states)
+  "Generate successor states that have not been seen before"
+  (remove-if
+   #'(lambda (state)
+       (or (member state states :test state=)
+           (member state old-states :test state=)))
+   (funcall successors (first states))))
+
+(defun next2 (x) (list (+ x 1) (+ x 2)))
