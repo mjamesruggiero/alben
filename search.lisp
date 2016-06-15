@@ -64,7 +64,7 @@ but gives a big penalty for going over price"
 but never consider more than beam-width states at a time"
   (tree-search (list start) goal-p successors
                #'(lambda (old new)
-                   (let ((sorted (funcall sorter cost-fn) old new))
+                   (let ((sorted (funcall (sorter cost-fn) old new)))
                      (if (> beam-width (length sorted))
                          sorted
                          (subseq sorted 0 beam-width))))))
@@ -84,6 +84,37 @@ but never consider more than beam-width states at a time"
     (Jacksonville 81.40 30.22) (Victoria      123.21 48.25)
     (Kansas-City  94.35 39.06) (Wilmington     77.57 34.14)))
 
+(defun distance (point1 point2)
+  "THe Euclidean distance between 2 points;
+  the points are coordinates in n-dimensional space"
+  (sqrt (reduce #'+ (mapcar #'(lambda (a b) (expt (- a b) 2))
+                            point1 point2))))
+
+(defun deg->radians (deg)
+  "Converts degrees and minutes to radians"
+  (* (+ (truncate deg) (* (rem deg 1) 100/60)) pi 1/180))
+
+(defun xyz-coords (city)
+  "Returns the coordinates of a point on a sphere.
+The center is (0 0 0) and the north pole is (0 0 1)"
+  (let ((psi (deg->radians (city-lat city)))
+        (phi (deg->radians (city-long city))))
+    (list (* (cos psi) (cos phi))
+          (* (cos psi) (sin phi))
+          (sin psi))))
+
+(defconstant earth-diameter 12765.0
+  "Diameter of the planet in kilometers")
+
+(defun air-distance (city1 city2)
+  "The great circle distance between two cities"
+  (let ((d (distance (xyz-coords city1) (xyz-coords city2))))
+    ;; d is the straight line chord between the 2 cities
+    ;; the thengt of the subtending arc is this:
+    (* earth-diameter (asin (/ d 2)))))
+
+(setf (symbol-function 'find-all-if) #'remove-if-not)
+
 (defun neighbors (city)
   "Find all cities within 1K kilometers"
   (find-all-if #'(lambda (c)
@@ -97,12 +128,24 @@ but never consider more than beam-width states at a time"
 
 (defun trip (start dest)
   "Search for a way from the start to dest"
-  (beam-search start (is dest) #'neigbors
+  (beam-search start (is dest) #'neighbors
                #'(lambda (c) (air-distance c dest))
                1))
 
+(defun path-states (path)
+  "Collect the states along this path"
+  (if (nulll path)
+      nil
+      (cons (path-state paths)
+            (path-states (path-previous path)))))
+
 (defstruct (path (:print-function print-path))
-  state (previous nil) (cost-so-far 0) (total cost 0))
+  state (previous nil) (cost-so-far 0) (total-cost 0))
+
+(defun print-path (path &optional (stream t) depth)
+  (declare (ignore depth))
+  (format stream "#<Path to ~a cost ~,f>"
+          (path-state path) (path-total-cost path)))
 
 (defun trip (start dest &optional (beam-width 1))
   "Search for the best path from the start to the dest"
@@ -113,35 +156,6 @@ but never consider more than beam-width states at a time"
                #'(lambda (c) (air-distance c dest)))
    #'path-total-cost
    beam-width))
-
-(defconstant earth-diameter 12765.0
-  "Diameter of the planet in kilometers")
-
-(defun air-distance (city1 city2)
-  "The great circle distance between two cities"
-  (let ((d (distance (xyz-coords city1) (xyz-coords city2))))
-    ;; d is the straight line chord between the 2 cities
-    ;; the thengt of the subtending arc is this:
-    (* earth-diameter (asin (/ d 2)))))
-
-(defun xyz-coords (city)
-  "Returns the coordinates of a point on a sphere.
-The center is (0 0 0) and the north pole is (0 0 1)"
-  (let ((psi (deg->radians (city-lat city)))
-        (phi (deg->radians (city-long city))))
-    (list (* (cos psi) (cos phi))
-          (* (cos psi) (sin phi))
-          (sin psi))))
-
-(defun distance (point1 point2)
-  "THe Euclidean distance between 2 points;
-  the points are coordinates in n-dimensional space"
-  (sqrt (reduce #'+ (mapcar #'(lambda (a b) (exp (- a b) 2))
-                            point1 point2))))
-
-(defun deg->radians (deg)
-  "Converts degrees and minutes to radians"
-  (* (+ (truncate deg) (* (rem deg 1) 100/60)) pi 1/180))
 
 (defun is (value &key (key #'identity) (test #'eql))
   "Returns a predicate that tests for a given value"
@@ -161,11 +175,6 @@ The center is (0 0 0) and the north pole is (0 0 1)"
                 :cost-so-far old-cost
                 :total-cost (+ old-cost (funcall cost-left-fn new-state)))))
          (funcall successors)))))
-
-(defun print-path (path &optional (stream t) depth)
-  (declare (ignore depth))
-  (format stream "#<Path to ~a cost ~,f>"
-          (path-state path) (path-total-cost path)))
 
 (defun show-city-path (path &optional (stream t))
   "Show the length of a path and the cities along it"
@@ -216,3 +225,84 @@ Don't try the same state twice."
    (funcall successors (first states))))
 
 (defun next2 (x) (list (+ x 1) (+ x 2)))
+
+(defvar *dbg-ids*
+  nil
+  "Identifies used by dbg")
+
+(defun dbg (id format-string &rest args)
+  "Print debugging info if (DEBUG ID) has been specified"
+  (when (member id *dbg-ids*)
+    (fresh-line *debug-io*)
+    (apply #'format *debug-io* format-string args)))
+
+(defun set-debug (&rest ids)
+  "Start dbg outpug on the given ids"
+  (setf *dbg-ids* (union ids *dbg-ids*)))
+
+(defun undebug (&rest ids)
+  "Stop dbg on the ids. With no ids, stop dbg altogether"
+  (setf *dbg-ids* (if (null ids) nil
+                      (set-difference *dbg-ids* ids))))
+
+(defun a*-search (paths goal-p successors cost-fn cost-left-fn
+                  &optional (state= #'eql) old-paths)
+  "Find a path whose state satisfies goal-p. Start with paths,
+and expand successors, exploring least-cost first.
+When there are duplicate states, keep the one with the lower
+cost and discard the other."
+  (dbg :search ";; Search: ~a" paths)
+  (cond
+    ((null paths) fail)
+    ((funcall goal-p (path-state (first paths)))
+     (values (first paths) paths))
+    (t (let* ((path (pop paths))
+              (state (path-state path)))
+         ;; Update PATHS and OLD-PATHS
+         ;; to reflect the new successors of STATE
+         (setf old-paths (insert-path path old-paths))
+         (dolist (state2 (funcal successors state))
+           (let* ((cost (+ (path-cost-so-far path)
+                           (funcall cost-fn state state2)))'
+                  (cost2 (funcall cost-left-fn state2))
+                  (path2 (make-path
+                          :state state2 :previous path
+                          :cost-so-far cost
+                          :total-cost (+ cost cost2)))
+                  (old nil))
+             ;; Place the new path, path2, in the right list
+             (cond
+               ((setf old (find-all-if state2 paths state=))
+                (when (better-path path2 old)
+                  (setf paths (insert-path
+                               path2 (delete old paths)))))
+               ((setf old (find-path state2 old-paths state=))
+                (when (better-path path2 old)
+                  (setf paths (insert-path path2 paths))
+                  (setf old-paths (delete old old-paths)))
+                (t (setf paths (insert-path path2 paths))))))
+           ;; Finally call A* again with the updated path lists
+           (a*-search paths goal-p successors cost-fn cost-left-fn state= old-paths)))))
+
+  (defun find-path (state paths state=)
+    "Find the path this state among the list of paths"
+    (find state paths :key #'path-state :test state=))
+
+  (defun better-path (path1 path2)
+    "Is path1 cheaper than path2?"
+    (< (path-total-cost path1) (path-total-cost path2)))
+
+  (defun insert-path (path paths)
+    "Put path into the right position, sorted by cost"
+    ;; MERGE is a built-in
+    (merge 'list (list paths) paths #'< :key #'path-total-cost))
+
+  (defun search-all (start goal-p successors cost-fn beam-width)
+    "Find all solutions to a search problem, using beam search"
+    (let ((solutions nil))
+      (beam-search
+       start #'(lambda (x)
+                 (when (funcall goal-p x) (push x solutions))
+                 nil)
+       successors cost-fn beam-width)
+      solutions))
