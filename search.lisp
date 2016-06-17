@@ -1,5 +1,24 @@
 ;;;; -*- Mode: List; Syntax: Common-Lisp -*-
 
+(defvar *dbg-ids*
+  nil
+  "Identifies used by dbg")
+
+(defun dbg (id format-string &rest args)
+  "Print debugging info if (DEBUG ID) has been specified"
+  (when (member id *dbg-ids*)
+    (fresh-line *debug-io*)
+    (apply #'format *debug-io* format-string args)))
+
+(defun set-debug (&rest ids)
+  "Start dbg outpug on the given ids"
+  (setf *dbg-ids* (union ids *dbg-ids*)))
+
+(defun undebug (&rest ids)
+  "Stop dbg on the ids. With no ids, stop dbg altogether"
+  (setf *dbg-ids* (if (null ids) nil
+                      (set-difference *dbg-ids* ids))))
+
 (defconstant fail nil)
 
 (defun tree-search (states goal-p successors combiner)
@@ -132,20 +151,24 @@ The center is (0 0 0) and the north pole is (0 0 1)"
                #'(lambda (c) (air-distance c dest))
                1))
 
-(defun path-states (path)
-  "Collect the states along this path"
-  (if (nulll path)
-      nil
-      (cons (path-state paths)
-            (path-states (path-previous path)))))
-
 (defstruct (path (:print-function print-path))
   state (previous nil) (cost-so-far 0) (total-cost 0))
+
+(defun path-states (path)
+  "Collect the states along this path"
+  (if (null path)
+      nil
+      (cons (path-state path)
+            (path-states (path-previous path)))))
 
 (defun print-path (path &optional (stream t) depth)
   (declare (ignore depth))
   (format stream "#<Path to ~a cost ~,f>"
           (path-state path) (path-total-cost path)))
+
+(defun is (value &key (key #'identity) (test #'eql))
+  "Returns a predicate that tests for a given value"
+  #'(lambda (path) (funcall test value (funcall key path))))
 
 (defun trip (start dest &optional (beam-width 1))
   "Search for the best path from the start to the dest"
@@ -156,10 +179,6 @@ The center is (0 0 0) and the north pole is (0 0 1)"
                #'(lambda (c) (air-distance c dest)))
    #'path-total-cost
    beam-width))
-
-(defun is (value &key (key #'identity) (test #'eql))
-  "Returns a predicate that tests for a given value"
-  #'(lambda (path) (funcall test balue (funcall key path))))
 
 (defun path-saver (successors cost-fn cost-left-fn)
   #'(lambda (old-path)
@@ -200,7 +219,7 @@ Return thr first solution found at any width."
                           :width (+ width 1) :max max))))
 
 (defun graph-search (states goal-p successors combiner
-                     &optional (state= #'eql) :max max)
+                     &optional (state= #'eql) old-states)
   "Find a state that satisfies goal-p. Start with states,
 and search according to successors and combiner.
 Don't try the same state twice."
@@ -226,25 +245,6 @@ Don't try the same state twice."
 
 (defun next2 (x) (list (+ x 1) (+ x 2)))
 
-(defvar *dbg-ids*
-  nil
-  "Identifies used by dbg")
-
-(defun dbg (id format-string &rest args)
-  "Print debugging info if (DEBUG ID) has been specified"
-  (when (member id *dbg-ids*)
-    (fresh-line *debug-io*)
-    (apply #'format *debug-io* format-string args)))
-
-(defun set-debug (&rest ids)
-  "Start dbg outpug on the given ids"
-  (setf *dbg-ids* (union ids *dbg-ids*)))
-
-(defun undebug (&rest ids)
-  "Stop dbg on the ids. With no ids, stop dbg altogether"
-  (setf *dbg-ids* (if (null ids) nil
-                      (set-difference *dbg-ids* ids))))
-
 (defun a*-search (paths goal-p successors cost-fn cost-left-fn
                   &optional (state= #'eql) old-paths)
   "Find a path whose state satisfies goal-p. Start with paths,
@@ -261,9 +261,9 @@ cost and discard the other."
          ;; Update PATHS and OLD-PATHS
          ;; to reflect the new successors of STATE
          (setf old-paths (insert-path path old-paths))
-         (dolist (state2 (funcal successors state))
+         (dolist (state2 (funcall successors state))
            (let* ((cost (+ (path-cost-so-far path)
-                           (funcall cost-fn state state2)))'
+                           (funcall cost-fn state state2)))
                   (cost2 (funcall cost-left-fn state2))
                   (path2 (make-path
                           :state state2 :previous path
@@ -272,7 +272,7 @@ cost and discard the other."
                   (old nil))
              ;; Place the new path, path2, in the right list
              (cond
-               ((setf old (find-all-if state2 paths state=))
+               ((setf old (find-path state2 paths state=))
                 (when (better-path path2 old)
                   (setf paths (insert-path
                                path2 (delete old paths)))))
@@ -282,7 +282,7 @@ cost and discard the other."
                   (setf old-paths (delete old old-paths)))
                 (t (setf paths (insert-path path2 paths))))))
            ;; Finally call A* again with the updated path lists
-           (a*-search paths goal-p successors cost-fn cost-left-fn state= old-paths)))))
+           (a*-search paths goal-p successors cost-fn cost-left-fn state= old-paths))))))
 
   (defun find-path (state paths state=)
     "Find the path this state among the list of paths"
@@ -295,7 +295,7 @@ cost and discard the other."
   (defun insert-path (path paths)
     "Put path into the right position, sorted by cost"
     ;; MERGE is a built-in
-    (merge 'list (list paths) paths #'< :key #'path-total-cost))
+    (merge 'list (list path) paths #'< :key #'path-total-cost))
 
   (defun search-all (start goal-p successors cost-fn beam-width)
     "Find all solutions to a search problem, using beam search"
