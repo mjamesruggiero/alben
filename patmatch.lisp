@@ -33,13 +33,13 @@
   "Does var match input? Uses or updates and returns bindings"
   (let ((binding (get-binding var bindings)))
     (cond ((not binding) (extend-bindings var input bindings))
-          ((equal input (binding0val binding)) bindings)
+          ((equal input (binding-val binding)) bindings)
           (t fail))))
 
 (defun segment-match-fn (x)
   "Get the segment-match function for x,
   if it is a symbol that has one"
-  (when (symbol p) (get x 'segment-match)))
+  (when (symbolp x) (get x 'segment-match)))
 
 (defun segment-pattern-p (pattern)
   "Is this a segment-matching pattern like ((?* var) . pat)?"
